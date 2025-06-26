@@ -1,0 +1,15 @@
+numpy
+pandas
+matplotlib
+seaborn
+scikit-learn
+scipy
+pytorch
+accelerate
+nltk
+sae_lens
+datasets
+huggingface_hub
+transformer_lens
+sae_dashboard
+python-dotenv
