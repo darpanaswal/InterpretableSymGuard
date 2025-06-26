@@ -1,17 +1,23 @@
 import nltk
 import torch
+import string
 import scipy.stats
 import pandas as pd
 from sae_lens import SAE
 from datasets import Dataset
 from collections import Counter
+from nltk.corpus import stopwords
 from huggingface_hub import login
 from sae_lens import ActivationsStore
 from config import openai_token, hf_token
 from transformer_lens import HookedTransformer
+from sklearn.feature_extraction.text import CountVectorizer
 from transformer_lens.utils import tokenize_and_concatenate
 
 nltk.download('stopwords')
+
+stop_words = set(stopwords.words("english"))
+vectorizer = CountVectorizer(ngram_range=(1, 2), analyzer="char")
 
 HF_TOKEN = hf_token
 OPENAI_API_KEY = openai_token
@@ -33,7 +39,7 @@ sae, cfg_dict, _ = SAE.from_pretrained("darpanaswal/TER-SAEs", "blocks.0.hook_at
 sae.to(device)
 sae.fold_W_dec_norm()
 
-tok = pd.read_csv("data/jailbreakTexts.csv")
+tok = pd.read_csv("data/1_jailbreakTexts.csv")
 tok = Dataset.from_pandas(tok)
 token_dataset = tokenize_and_concatenate(
     dataset=tok,
@@ -102,6 +108,20 @@ for feature_id in range(sparse_codes.shape[1]):
         top_tokens.append(token_text)
         top_prompts.append(prompt_text)
 
+    total = len(top_tokens)
+    unique = len(set(top_tokens))
+    lexical_diversity = unique / total if total > 0 else 0
+    stopword_ratio = sum(1 for t in top_tokens if t.lower() in stop_words) / total if total > 0 else 0
+    avg_token_len = sum(len(t) for t in top_tokens) / total if total > 0 else 0
+
+    # n-gram entropy
+    if total > 0:
+        joined = " ".join(top_tokens)
+        ngram_freq = vectorizer.fit_transform([joined])
+        ngram_entropy = scipy.stats.entropy(ngram_freq.toarray().flatten())
+    else:
+        ngram_entropy = 0.0
+
     token_counts = Counter(top_tokens)
     token_entropy = scipy.stats.entropy(list(token_counts.values()))
 
@@ -111,10 +131,14 @@ for feature_id in range(sparse_codes.shape[1]):
         "top_tokens": top_tokens,
         "mean_activation": mean_activation,
         "token_entropy": token_entropy,
+        "lexical_diversity": lexical_diversity,
+        "stopword_ratio": stopword_ratio,
+        "avg_token_len": avg_token_len,
+        "ngram_entropy": ngram_entropy
     })
 
 # Convert to DataFrame and save
 feature_df = pd.DataFrame(feature_data)
-feature_df.to_csv("data/feature_activations.csv", index=False)
+feature_df.to_csv("data/2_feature_activations.csv", index=False)
 
 print(f"🧮 Total features processed: {len(feature_df)}")
